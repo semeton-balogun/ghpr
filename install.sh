@@ -30,6 +30,8 @@ progress_bar() {
 }
 
 # ─── Main Setup ───────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$SCRIPT_DIR/bin/ghpr"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
