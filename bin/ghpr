@@ -167,6 +167,13 @@ interactive_prompt() {
   fi
 }
 
+prompt_for_pr_body() {
+  # Ask user for PR description
+  echo ""
+  read -r -p "PR Description (press Enter to skip): " body_input
+  PR_BODY="$body_input"
+}
+
 agent_mode_prompt() {
   # Output a JSON schema for LLM interaction
   local current_branch current_status
@@ -366,8 +373,9 @@ DRY_RUN=false
 JSON_OUTPUT=false
 SHOW_PREVIEW=false
 SUGGEST_MODE=false
-INTERACTIVE_MODE=false
+INTERACTIVE_MODE=true
 DEFAULT_BASE=""
+PR_BODY=""
 FILES=()
 
 # ─── Argument Parsing ─────────────────────────────────────────────────────────
@@ -557,11 +565,16 @@ if [[ "$OPEN_PRS" == "0" ]]; then
   DRAFT_FLAG=""
   [[ "$DRAFT" == true ]] && DRAFT_FLAG="--draft"
 
+  # Prompt for PR body in interactive mode if not in JSON/dry-run mode
+  if [[ "$INTERACTIVE_MODE" == true && "$JSON_OUTPUT" != true && "$DRY_RUN" != true ]]; then
+    prompt_for_pr_body
+  fi
+
   gh pr create \
     --base "$BASE_BRANCH" \
     --head "$HEAD_BRANCH" \
     --title "$COMMIT_MSG" \
-    --body "Automated PR: \`$HEAD_BRANCH\` → \`$BASE_BRANCH\`." \
+    --body "${PR_BODY:-PR from $HEAD_BRANCH to $BASE_BRANCH}" \
     $DRAFT_FLAG
 
   suppress_output || ok "PR created: $HEAD_BRANCH → $BASE_BRANCH"
