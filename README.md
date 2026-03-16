@@ -58,20 +58,11 @@ Just run ghpr with no arguments for an interactive prompt:
 
 ```bash
 ghpr
-# File selection: spacebar to toggle, enter to confirm
-# Commit type selection: arrow keys to navigate, enter to select
-# Prompted: Description?
-# Asks for confirmation
+# Lists changed files — type numbers (e.g. 1,3) to select, 'a' for all
+# Pick commit type by number (1-8)
+# Type a description
+# Confirm to commit, push and open a PR
 ```
-
-**Best experience:** Install `gum` for beautiful styled interactive selection with intuitive keyboard controls:
-
-```bash
-brew install gum
-ghpr
-```
-
-Without `gum`, you get text-based prompts (still fully functional with all the same options).
 
 ### Quick Commit Aliases
 

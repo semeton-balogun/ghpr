@@ -134,244 +134,87 @@ interactive_prompt() {
   # Gather changed/untracked files and let users choose what to stage.
   local changed_files=()
   local selected_files=()
-  local selected_lines=()
-  local selected_flags=()
   local selection_input
-  local selected_line
-  local selected_num
-  local selected_count
-  local use_fzf=false
-  local use_gum=false
-  local commit_type_choice
-  local commit_types
   local idx
   local i
   local file
   local line
-  local trimmed
-  
-  if command -v gum >/dev/null 2>&1; then
-    use_gum=true
-  fi
-  
-  if command -v fzf >/dev/null 2>&1; then
-    use_fzf=true
-  fi
 
   while IFS= read -r line; do
     changed_files+=("$line")
   done < <(git status --porcelain | awk '{print substr($0,4)}')
 
+  # File selection
   if [[ ${#changed_files[@]} -gt 0 ]]; then
-    if [[ "$use_gum" == true ]]; then
-      selected_files=()
-      while IFS= read -r selected_line; do
-        [[ -n "$selected_line" ]] && selected_files+=("$selected_line")
-      done < <(
-        printf "%s\n" "${changed_files[@]}" | gum choose --no-limit --header="Select files (spacebar: toggle, enter: confirm)" 2>/dev/null || true
-      )
-
-      if [[ ${#selected_files[@]} -eq 0 ]]; then
-        FILES=("${changed_files[@]}")
-      else
-        FILES=("${selected_files[@]}")
-      fi
-    elif [[ "$use_fzf" == true ]]; then
-      echo "Select files to stage (checkbox style):"
-      echo "Use Tab to toggle, Enter to confirm, Esc to cancel."
-
-      selected_lines=()
-      while IFS= read -r selected_line; do
-        selected_lines+=("$selected_line")
-      done < <(
-        idx=1
-        for file in "${changed_files[@]}"; do
-          printf "%d) %s\n" "$idx" "$file"
-          ((idx++))
-        done | fzf --multi --prompt="Files > " --header="Tab: toggle | Enter: confirm | Esc: cancel"
-      )
-
-      # If user cancels without selecting, default to all changed files.
-      if [[ ${#selected_lines[@]} -eq 0 ]]; then
-        FILES=("${changed_files[@]}")
-      else
-        FILES=()
-        for selected_line in "${selected_lines[@]}"; do
-          selected_num="${selected_line%%)*}"
-          if [[ "$selected_num" =~ ^[0-9]+$ ]] && (( selected_num >= 1 && selected_num <= ${#changed_files[@]} )); then
-            FILES+=("${changed_files[$((selected_num-1))]}")
-          fi
-        done
-        [[ ${#FILES[@]} -gt 0 ]] || FILES=("${changed_files[@]}")
-      fi
-    else
-      # Wizard-like checkbox selection for environments without fzf.
-      selected_flags=()
-      for ((i=0; i<${#changed_files[@]}; i++)); do
-        selected_flags+=(1)
-      done
-
-      while true; do
-        echo ""
-        echo "Select files to stage (checkbox style):"
-        for ((i=0; i<${#changed_files[@]}; i++)); do
-          if [[ "${selected_flags[$i]}" == "1" ]]; then
-            printf "  [x] %d) %s\n" "$((i+1))" "${changed_files[$i]}"
-          else
-            printf "  [ ] %d) %s\n" "$((i+1))" "${changed_files[$i]}"
-          fi
-        done
-        echo ""
-        echo "Commands: number(s) to toggle (e.g. 1,3), a=all, n=none, d=done, q=cancel"
-        read -r -p "Choice: " selection_input
-
-        case "$selection_input" in
-          q|Q)
-            echo "Cancelled."
-            exit 0
-            ;;
-          a|A|"")
-            for ((i=0; i<${#selected_flags[@]}; i++)); do
-              selected_flags[$i]=1
-            done
-            [[ -z "$selection_input" ]] && break
-            ;;
-          n|N)
-            for ((i=0; i<${#selected_flags[@]}; i++)); do
-              selected_flags[$i]=0
-            done
-            ;;
-          d|D)
-            selected_count=0
-            for ((i=0; i<${#selected_flags[@]}; i++)); do
-              [[ "${selected_flags[$i]}" == "1" ]] && ((selected_count++))
-            done
-            if [[ $selected_count -eq 0 ]]; then
-              echo "Select at least one file before continuing."
-            else
-              break
-            fi
-            ;;
-          *)
-            selection_input="${selection_input// /}"
-            IFS=',' read -r -a selected_files <<< "$selection_input"
-            for idx in "${selected_files[@]}"; do
-              trimmed="$(echo "$idx" | xargs)"
-              if [[ "$trimmed" =~ ^[0-9]+$ ]] && (( trimmed >= 1 && trimmed <= ${#changed_files[@]} )); then
-                i=$((trimmed-1))
-                if [[ "${selected_flags[$i]}" == "1" ]]; then
-                  selected_flags[$i]=0
-                else
-                  selected_flags[$i]=1
-                fi
-              fi
-            done
-            ;;
-        esac
-      done
-
-      FILES=()
-      for ((i=0; i<${#changed_files[@]}; i++)); do
-        if [[ "${selected_flags[$i]}" == "1" ]]; then
-          FILES+=("${changed_files[$i]}")
-        fi
-      done
-
-      [[ ${#FILES[@]} -gt 0 ]] || die "No files selected for staging."
-    fi
-  fi
-  
-  # Get commit type
-  if [[ "$use_gum" == true ]]; then
-    TYPE=$(printf "feat\nfix\ndocs\nstyle\nrefactor\ntest\nchore\ncustom" | gum choose --header="Select commit type (arrow keys, enter to select)" 2>/dev/null || echo "chore")
-    if [[ "$TYPE" == "custom" ]]; then
-      read -r -p "Enter custom type: " TYPE
-    fi
-  elif [[ "$use_fzf" == true ]]; then
-    echo "Commit type (radio style):"
-    commit_types=$(
-      printf "1) feat (feature)\n"
-      printf "2) fix (bug fix)\n"
-      printf "3) docs (documentation)\n"
-      printf "4) style (format)\n"
-      printf "5) refactor (code)\n"
-      printf "6) test (testing)\n"
-      printf "7) chore (other)\n"
-      printf "8) custom\n"
-    )
-    commit_type_choice=$(printf "%s" "$commit_types" | fzf --prompt="Type > " --header="Enter: choose one | Esc: default chore")
-    type_choice="${commit_type_choice%%)*}"
-    [[ -n "$type_choice" ]] || type_choice="7"
-  else
-    type_choice="7"
-    while true; do
-      echo ""
-      echo "Commit type (radio style):"
-      echo "Use number to select, d=done, q=cancel"
-      for i in 1 2 3 4 5 6 7 8; do
-        if [[ "$type_choice" == "$i" ]]; then
-          marker="(*)"
-        else
-          marker="( )"
-        fi
-        case "$i" in
-          1) echo "  $marker 1) feat (feature)" ;;
-          2) echo "  $marker 2) fix (bug fix)" ;;
-          3) echo "  $marker 3) docs (documentation)" ;;
-          4) echo "  $marker 4) style (format)" ;;
-          5) echo "  $marker 5) refactor (code)" ;;
-          6) echo "  $marker 6) test (testing)" ;;
-          7) echo "  $marker 7) chore (other)" ;;
-          8) echo "  $marker 8) custom" ;;
-        esac
-      done
-
-      read -r -p "Choice: " selection_input
-      case "$selection_input" in
-        q|Q)
-          echo "Cancelled."
-          exit 0
-          ;;
-        d|D|"")
-          break
-          ;;
-        [1-8])
-          type_choice="$selection_input"
-          ;;
-      esac
+    echo "Files to stage:"
+    for ((i=0; i<${#changed_files[@]}; i++)); do
+      printf "%3d) %s\n" "$((i+1))" "${changed_files[$i]}"
     done
+    echo ""
+    echo "Commands: type numbers (1,2,3), 'a' for all, 'd' for done"
+    read -r -p "> " selection_input < /dev/tty
     
-    case $type_choice in
-      1) TYPE="feat" ;;
-      2) TYPE="fix" ;;
-      3) TYPE="docs" ;;
-      4) TYPE="style" ;;
-      5) TYPE="refactor" ;;
-      6) TYPE="test" ;;
-      7) TYPE="chore" ;;
-      8) read -r -p "Enter type: " TYPE ;;
-      *) TYPE="chore" ;;
-    esac
+    if [[ "$selection_input" =~ ^[Aa]$ ]] || [[ -z "$selection_input" ]]; then
+      FILES=("${changed_files[@]}")
+    else
+      FILES=()
+      selection_input="${selection_input// /}"
+      local -a nums
+      IFS=',' read -ra nums <<< "$selection_input"
+      for idx in "${nums[@]}"; do
+        if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#changed_files[@]} )); then
+          FILES+=("${changed_files[$((idx-1))]}")
+        fi
+      done
+    fi
   fi
   
-  # Get description
-  read -r -p "Description: " DESC
+  # Commit type selection
+  echo ""
+  echo "Commit type:"
+  printf "%3d) feat (feature)\n" 1
+  printf "%3d) fix (bug fix)\n" 2
+  printf "%3d) docs (documentation)\n" 3
+  printf "%3d) style (formatting)\n" 4
+  printf "%3d) refactor (code)\n" 5
+  printf "%3d) test (testing)\n" 6
+  printf "%3d) chore (other)\n" 7
+  printf "%3d) custom\n" 8
+  echo ""
+  read -r -p "Select [1-8]: " selection_input < /dev/tty
+  
+  case "$selection_input" in
+    1) TYPE="feat" ;;
+    2) TYPE="fix" ;;
+    3) TYPE="docs" ;;
+    4) TYPE="style" ;;
+    5) TYPE="refactor" ;;
+    6) TYPE="test" ;;
+    7) TYPE="chore" ;;
+    8) 
+      read -r -p "Enter custom type: " TYPE < /dev/tty
+      ;;
+    *) TYPE="chore" ;;
+  esac
+  
+  # Description
+  echo ""
+  read -r -p "Description: " DESC < /dev/tty
   COMMIT_MSG="$TYPE: $DESC"
   
-  # Confirm
+  # Confirmation
   echo ""
   echo "Commit: $COMMIT_MSG"
   if [[ ${#FILES[@]} -gt 0 ]]; then
-    echo "Files selected for staging:"
+    echo "Files to stage:"
     for file in "${FILES[@]}"; do
       echo "  - $file"
     done
-  else
-    echo "Files selected for staging: all changes"
   fi
-  read -r -p "Proceed? [y/N]: " confirm
+  echo ""
+  read -r -p "Proceed? [y/N]: " selection_input < /dev/tty
   
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+  if [[ ! "$selection_input" =~ ^[Yy]$ ]]; then
     echo "Cancelled."
     exit 0
   fi
@@ -380,8 +223,7 @@ interactive_prompt() {
 prompt_for_pr_body() {
   # Ask user for PR description
   echo ""
-  read -r -p "PR Description (press Enter to skip): " body_input
-  PR_BODY="$body_input"
+  read -r -p "PR Description (press Enter to skip): " PR_BODY < /dev/tty
 }
 
 agent_mode_prompt() {

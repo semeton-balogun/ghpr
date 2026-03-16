@@ -4,7 +4,7 @@
 # Usage:
 #   ./install.sh                        # installs to /usr/local/bin (may need sudo)
 #   INSTALL_DIR=~/.local/bin ./install.sh  # installs to a user-local directory
-#   GHPR_SKIP_FZF_PROMPT=true ./install.sh # skips optional fzf/gum install prompt
+#   GHPR_SKIP_FZF_PROMPT=true ./install.sh # skips optional dependency prompts
 #
 # To uninstall:
 #   ./uninstall.sh
@@ -37,45 +37,7 @@ progress_bar() {
 }
 
 check_interactive_ui_support() {
-  local skip_prompt="${GHPR_SKIP_FZF_PROMPT:-false}"
-  if [[ "$skip_prompt" =~ ^(1|true|TRUE|yes|YES|y|Y)$ ]]; then
-    echo ""
-    echo "ℹ️  Skipping optional UI tools prompt (GHPR_SKIP_FZF_PROMPT is set)."
-    echo "   Install later with: brew install gum fzf"
-    return 0
-  fi
-
-  if command -v gum &>/dev/null; then
-    return 0
-  fi
-
-  echo ""
-  echo "ℹ️  Optional dependency: gum"
-  echo "   Install gum for beautiful styled interactive selection with spacebar multi-select."
-
-  if ! command -v brew &>/dev/null; then
-    echo "   Homebrew not found. You can install gum later: brew install gum"
-    return 0
-  fi
-
-  if [[ ! -t 0 ]]; then
-    echo "   Non-interactive install detected; skipping gum install prompt."
-    echo "   Install later with: brew install gum"
-    return 0
-  fi
-
-  local reply
-  read -r -p "   Install gum now with Homebrew? [Y/n] " reply </dev/tty || return 0
-  if [[ -z "$reply" || "$reply" =~ ^[Yy]$ ]]; then
-    echo "   Installing gum..."
-    if brew install gum; then
-      echo "✅ gum installed."
-    else
-      echo "⚠️  gum installation failed. You can retry later with: brew install gum"
-    fi
-  else
-    echo "   Skipped. You can install later with: brew install gum"
-  fi
+  return 0
 }
 
 # ─── Main Setup ───────────────────────────────────────────────────────────────
