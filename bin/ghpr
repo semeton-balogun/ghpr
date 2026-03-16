@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# ghpr — Commit, push, and open a GitHub pull request from the terminal.
+#
+# Usage:
+#   ghpr [options] [files...]
+#
+# Options:
+#   -H, --head <branch>     Head branch (source of changes). Default: current branch
+#   -b, --base <branch>     Base branch (PR target).         Default: current branch at invocation
+#   -m, --message <msg>     Commit message (required when there are changes to commit)
+#   -d, --draft             Create PR as a draft
+#       --no-pr             Commit and push only; skip PR creation
+#   -h, --help              Show this help message
+#
+# Positional args:
+#   files...                Files to stage. Omit to stage everything (git add -A)
+#
+# Examples:
+#   ghpr -m "feat: improve search"
+#   ghpr --head qa --base main -m "feat: release candidate"
+#   ghpr --head feature/auth -m "feat: login flow" src/auth.js
+#   ghpr -m "fix: typo" --no-pr
+#   ghpr --head qa -m "chore: config update" --draft
+
+set -euo pipefail
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+die()   { echo "❌ ghpr: $*" >&2; exit 1; }
+info()  { echo "ℹ  $*"; }
+ok()    { echo "✅ $*"; }
+
+usage() {
+  # Print every leading comment line (strip the leading '# ' or lone '#')
+  while IFS= read -r line; do
+    [[ "$line" == \#!* ]] && continue         # skip shebang
+    [[ "$line" == \#* ]]  || break            # stop at first non-comment line
+    # strip leading '# ' or lone '#'
+    printf '%s\n' "${line#\#}"  | sed 's/^ //'
+  done < "$0"
+  exit 0
+}
+
+require_cmd() {
+  command -v "$1" &>/dev/null || die "Required command not found: $1. Please install it."
+}
+
+# ─── Pre-flight ───────────────────────────────────────────────────────────────
+
+require_cmd git
+require_cmd gh
+
+git rev-parse --is-inside-work-tree &>/dev/null || die "Not inside a git repository."
+
+# Capture the branch we're on right now — this becomes the BASE default.
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# ─── Defaults ─────────────────────────────────────────────────────────────────
+
+HEAD_BRANCH="$CURRENT_BRANCH"
+BASE_BRANCH="$CURRENT_BRANCH"
+COMMIT_MSG=""
+DRAFT=false
+SKIP_PR=false
+FILES=()
+
+# ─── Argument Parsing ─────────────────────────────────────────────────────────
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -H|--head)
+      [[ -n "${2-}" ]] || die "--head requires a branch name."
+      HEAD_BRANCH="$2"; shift 2 ;;
+    -b|--base)
+      [[ -n "${2-}" ]] || die "--base requires a branch name."
+      BASE_BRANCH="$2"; shift 2 ;;
+    -m|--message)
+      [[ -n "${2-}" ]] || die "--message requires a value."
+      COMMIT_MSG="$2"; shift 2 ;;
+    -d|--draft)
+      DRAFT=true; shift ;;
+    --no-pr)
+      SKIP_PR=true; shift ;;
+    -h|--help)
+      usage ;;
+    --)
+      shift; FILES+=("$@"); break ;;
+    -*)
+      die "Unknown option: $1  (run ghpr --help for usage)" ;;
+    *)
+      FILES+=("$1"); shift ;;
+  esac
+done
+
+# ─── Validation ───────────────────────────────────────────────────────────────
+
+[[ -n "$COMMIT_MSG" ]] || die "A commit message is required (-m / --message)."
+
+# ─── Stage files ──────────────────────────────────────────────────────────────
+
+if [[ ${#FILES[@]} -gt 0 ]]; then
+  info "Staging: ${FILES[*]}"
+  git add -- "${FILES[@]}"
+else
+  info "Staging all changes (git add -A)"
+  git add -A
+fi
+
+# ─── Switch to head branch ────────────────────────────────────────────────────
+
+if [[ "$HEAD_BRANCH" != "$CURRENT_BRANCH" ]]; then
+  info "Switching to branch: $HEAD_BRANCH"
+  git checkout "$HEAD_BRANCH"
+fi
+
+# ─── Commit ───────────────────────────────────────────────────────────────────
+
+if ! git diff --cached --quiet; then
+  git commit -m "$COMMIT_MSG"
+  ok "Committed: $COMMIT_MSG"
+else
+  info "Nothing to commit — working tree is clean."
+fi
+
+# ─── Push ─────────────────────────────────────────────────────────────────────
+
+info "Pushing $HEAD_BRANCH to origin..."
+git push origin "$HEAD_BRANCH"
+ok "Pushed $HEAD_BRANCH"
+
+# ─── Sync with remote ─────────────────────────────────────────────────────────
+
+git pull --rebase origin "$HEAD_BRANCH"
+
+# ─── Pull Request ─────────────────────────────────────────────────────────────
+
+if [[ "$SKIP_PR" == true ]]; then
+  info "Skipping PR creation (--no-pr)."
+  exit 0
+fi
+
+if [[ "$HEAD_BRANCH" == "$BASE_BRANCH" ]]; then
+  info "HEAD and BASE are the same branch ($HEAD_BRANCH) — skipping PR creation."
+  exit 0
+fi
+
+OPEN_PRS=$(gh pr list \
+  --base "$BASE_BRANCH" \
+  --head "$HEAD_BRANCH" \
+  --state open \
+  --json number \
+  --jq 'length')
+
+if [[ "$OPEN_PRS" == "0" ]]; then
+  DRAFT_FLAG=""
+  [[ "$DRAFT" == true ]] && DRAFT_FLAG="--draft"
+
+  gh pr create \
+    --base "$BASE_BRANCH" \
+    --head "$HEAD_BRANCH" \
+    --title "$COMMIT_MSG" \
+    --body "Automated PR: \`$HEAD_BRANCH\` → \`$BASE_BRANCH\`." \
+    $DRAFT_FLAG
+
+  ok "PR created: $HEAD_BRANCH → $BASE_BRANCH"
+else
+  info "An open PR already exists for $HEAD_BRANCH → $BASE_BRANCH."
+fi
