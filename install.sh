@@ -4,6 +4,7 @@
 # Usage:
 #   ./install.sh                        # installs to /usr/local/bin (may need sudo)
 #   INSTALL_DIR=~/.local/bin ./install.sh  # installs to a user-local directory
+#   GHPR_SKIP_FZF_PROMPT=true ./install.sh # skips optional fzf install prompt
 #
 # To uninstall:
 #   ./uninstall.sh
@@ -33,6 +34,49 @@ progress_bar() {
   printf "%${filled}s" | tr ' ' '▰'
   printf "%${empty}s" | tr ' ' '▱'
   printf "] %3d%%  " "$percent"
+}
+
+check_fzf_support() {
+  local skip_prompt="${GHPR_SKIP_FZF_PROMPT:-false}"
+  if [[ "$skip_prompt" =~ ^(1|true|TRUE|yes|YES|y|Y)$ ]]; then
+    echo ""
+    echo "ℹ️  Skipping fzf prompt (GHPR_SKIP_FZF_PROMPT is set)."
+    echo "   Install later with: brew install fzf"
+    return 0
+  fi
+
+  if command -v fzf &>/dev/null; then
+    return 0
+  fi
+
+  echo ""
+  echo "ℹ️  Optional dependency: fzf"
+  echo "   Install fzf to enable arrow-key checkbox/radio selection in ghpr interactive mode."
+
+  if ! command -v brew &>/dev/null; then
+    echo "   Homebrew not found. You can install fzf later: brew install fzf"
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "   Non-interactive install detected; skipping fzf install prompt."
+    echo "   Install later with: brew install fzf"
+    return 0
+  fi
+
+  local reply
+  read -r -p "   Install fzf now with Homebrew? [Y/n] " reply </dev/tty || return 0
+  if [[ -z "$reply" || "$reply" =~ ^[Yy]$ ]]; then
+    echo "   Installing fzf..."
+    if brew install fzf; then
+      echo "✅ fzf installed."
+      echo "   Optional shell keybindings/completion setup: $(brew --prefix)/opt/fzf/install"
+    else
+      echo "⚠️  fzf installation failed. You can retry later with: brew install fzf"
+    fi
+  else
+    echo "   Skipped. You can install later with: brew install fzf"
+  fi
 }
 
 # ─── Main Setup ───────────────────────────────────────────────────────────────
@@ -152,3 +196,5 @@ if ! command -v ghpr &>/dev/null; then
 else
   echo "   Run 'ghpr --help' to get started."
 fi
+
+check_fzf_support
