@@ -345,6 +345,8 @@ DRY_RUN=false
 JSON_OUTPUT=false
 SHOW_PREVIEW=false
 SUGGEST_MODE=false
+INTERACTIVE_MODE=false
+DEFAULT_BASE=""
 FILES=()
 
 # ─── Argument Parsing ─────────────────────────────────────────────────────────
