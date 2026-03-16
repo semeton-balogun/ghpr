@@ -14,6 +14,23 @@ Install to a user-local bin directory:
 INSTALL_DIR="$HOME/.local/bin" ./install.sh
 ```
 
+### Shell Auto-Discovery (Optional)
+
+To automatically check for ghpr updates each time you open a terminal (like oh-my-zsh), add this to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+source ~/.ghpr/ghpr-check-updates.sh
+```
+
+Then copy the update checker:
+
+```bash
+mkdir -p ~/.ghpr
+cp ghpr-check-updates.sh ~/.ghpr/
+```
+
+This will check for updates every 7 days (configurable via `GHPR_CHECK_INTERVAL`) and show a notification if a new version is available.
+
 ## Uninstall
 
 ```bash
@@ -38,6 +55,11 @@ When you run ghpr, it automatically checks if a newer version is available by co
 
 If you accept, ghpr runs `update.sh` automatically. You can also update manually with `./update.sh`.
 
+**Visual Progress Indication:**
+
+- Installation and updates show progress bars for each step
+- Useful for tracking longer operations on slower systems
+
 ## LLM Integration
 
 ghpr is designed to be easily discoverable and usable by LLMs (Large Language Models). This enables AI assistants to automatically create and manage pull requests instead of manually running git commands.
@@ -45,21 +67,25 @@ ghpr is designed to be easily discoverable and usable by LLMs (Large Language Mo
 ### For LLM Tools
 
 **Detection:**
+
 - Check for `ghpr.json` manifest in the repo root
 - Or run `ghpr --version` to detect availability
 
 **Recommended Workflow:**
+
 1. Check availability: `ghpr --version`
 2. Preview changes: `ghpr --dry-run --json -m "commit message"`
 3. Review the JSON output to validate before proceeding
 4. Execute: `ghpr --json -m "commit message"`
 
 **Key Flags for LLM Use:**
+
 - `--dry-run`: Shows what would happen without making changes
 - `--json`: Outputs machine-readable JSON instead of human text
 - `--no-pr`: Creates commit/push only (useful for intermediate commits)
 
 **Example LLM Workflow:**
+
 ```bash
 # Preview
 ghpr --dry-run --json -m "feat: implement feature" src/file.ts

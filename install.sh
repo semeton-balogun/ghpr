@@ -10,7 +10,26 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ─── Progress Bar ─────────────────────────────────────────────────────────────
+
+PROGRESS_WIDTH=30
+
+progress_bar() {
+  local current="$1"
+  local total="$2"
+  local label="${3:-Progress}"
+  
+  local percent=$(( (current * 100) / total ))
+  local filled=$(( (percent * PROGRESS_WIDTH) / 100 ))
+  local empty=$(( PROGRESS_WIDTH - filled ))
+  
+  printf "\r%s: [" "$label"
+  printf "%${filled}s" | tr ' ' '▰'
+  printf "%${empty}s" | tr ' ' '▱'
+  printf "] %3d%%  " "$percent"
+}
+
+# ─── Main Setup ───────────────────────────────────────────────────────────────
 SOURCE="$SCRIPT_DIR/bin/ghpr"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
@@ -18,6 +37,10 @@ TARGET="$INSTALL_DIR/ghpr"
 RENDERED_SOURCE=""
 
 # ─── Checks ───────────────────────────────────────────────────────────────────
+
+progress_bar 0 5 "Validating"
+echo ""
+sleep 0.1
 
 [[ -f "$SOURCE" ]] || {
   echo "❌ Could not find bin/ghpr in $SCRIPT_DIR"
@@ -56,6 +79,9 @@ fi
 
 # ─── Create install dir if it doesn't exist ───────────────────────────────────
 
+progress_bar 1 5 "Setting up"
+echo ""
+
 if [[ ! -d "$INSTALL_DIR" ]]; then
   echo "→ Creating $INSTALL_DIR ..."
   mkdir -p "$INSTALL_DIR" 2>/dev/null || sudo mkdir -p "$INSTALL_DIR"
@@ -66,6 +92,9 @@ fi
 install_binary() {
   install -m 0755 "$RENDERED_SOURCE" "$TARGET"
 }
+
+progress_bar 2 5 "Installing"
+echo ""
 
 if [[ -f "$TARGET" ]] && cmp -s "$RENDERED_SOURCE" "$TARGET"; then
   echo "→ $TARGET is already up to date."
@@ -78,6 +107,9 @@ else
   [[ -n "$CURRENT_VERSION" ]] && INSTALL_STATUS="updated"
 fi
 
+progress_bar 3 5 "Verifying"
+echo ""
+
 # ─── PATH check ───────────────────────────────────────────────────────────────
 
 echo ""
@@ -89,6 +121,14 @@ else
   echo "✅ ghpr installed: $VERSION"
 fi
 echo "   Location: $TARGET"
+echo ""
+
+progress_bar 4 5 "Finalizing"
+echo ""
+
+sleep 0.1
+progress_bar 5 5 "Complete"
+echo ""
 echo ""
 
 if ! command -v ghpr &>/dev/null; then
