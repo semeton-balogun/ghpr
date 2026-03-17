@@ -4,6 +4,7 @@
 # Usage:
 #   ./install.sh                        # installs to /usr/local/bin (may need sudo)
 #   INSTALL_DIR=~/.local/bin ./install.sh  # installs to a user-local directory
+#   GHPR_SKIP_FZF_PROMPT=true ./install.sh # skips optional dependency prompts
 #
 # To uninstall:
 #   ./uninstall.sh
@@ -33,6 +34,10 @@ progress_bar() {
   printf "%${filled}s" | tr ' ' '▰'
   printf "%${empty}s" | tr ' ' '▱'
   printf "] %3d%%  " "$percent"
+}
+
+check_interactive_ui_support() {
+  return 0
 }
 
 # ─── Main Setup ───────────────────────────────────────────────────────────────
@@ -152,3 +157,5 @@ if ! command -v ghpr &>/dev/null; then
 else
   echo "   Run 'ghpr --help' to get started."
 fi
+
+check_interactive_ui_support

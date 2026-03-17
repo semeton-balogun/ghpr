@@ -131,16 +131,59 @@ interactive_prompt() {
   echo "🚀 ghpr interactive mode"
   echo ""
   
-  show_diff_preview
+  # Gather changed/untracked files and let users choose what to stage.
+  local changed_files=()
+  local selected_files=()
+  local selection_input
+  local idx
+  local i
+  local file
+  local line
+
+  while IFS= read -r line; do
+    changed_files+=("$line")
+  done < <(git status --porcelain | awk '{print substr($0,4)}')
+
+  # File selection
+  if [[ ${#changed_files[@]} -gt 0 ]]; then
+    echo "Files to stage:"
+    for ((i=0; i<${#changed_files[@]}; i++)); do
+      printf "%3d) %s\n" "$((i+1))" "${changed_files[$i]}"
+    done
+    echo ""
+    echo "Commands: type numbers (1,2,3), 'a' for all, 'd' for done"
+    read -r -p "> " selection_input < /dev/tty
+    
+    if [[ "$selection_input" =~ ^[Aa]$ ]] || [[ -z "$selection_input" ]]; then
+      FILES=("${changed_files[@]}")
+    else
+      FILES=()
+      selection_input="${selection_input// /}"
+      local -a nums
+      IFS=',' read -ra nums <<< "$selection_input"
+      for idx in "${nums[@]}"; do
+        if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#changed_files[@]} )); then
+          FILES+=("${changed_files[$((idx-1))]}")
+        fi
+      done
+    fi
+  fi
   
-  # Get commit type
+  # Commit type selection
+  echo ""
   echo "Commit type:"
-  echo "  1) feat (feature)   2) fix (bug fix)      3) docs (documentation)"
-  echo "  4) style (format)   5) refactor (code)    6) test (testing)"
-  echo "  7) chore (other)    8) custom"
-  read -r -p "Select [1-8]: " type_choice
+  printf "%3d) feat (feature)\n" 1
+  printf "%3d) fix (bug fix)\n" 2
+  printf "%3d) docs (documentation)\n" 3
+  printf "%3d) style (formatting)\n" 4
+  printf "%3d) refactor (code)\n" 5
+  printf "%3d) test (testing)\n" 6
+  printf "%3d) chore (other)\n" 7
+  printf "%3d) custom\n" 8
+  echo ""
+  read -r -p "Select [1-8]: " selection_input < /dev/tty
   
-  case $type_choice in
+  case "$selection_input" in
     1) TYPE="feat" ;;
     2) TYPE="fix" ;;
     3) TYPE="docs" ;;
@@ -148,20 +191,30 @@ interactive_prompt() {
     5) TYPE="refactor" ;;
     6) TYPE="test" ;;
     7) TYPE="chore" ;;
-    8) read -r -p "Enter type: " TYPE ;;
+    8) 
+      read -r -p "Enter custom type: " TYPE < /dev/tty
+      ;;
     *) TYPE="chore" ;;
   esac
   
-  # Get description
-  read -r -p "Description: " DESC
+  # Description
+  echo ""
+  read -r -p "Description: " DESC < /dev/tty
   COMMIT_MSG="$TYPE: $DESC"
   
-  # Confirm
+  # Confirmation
   echo ""
   echo "Commit: $COMMIT_MSG"
-  read -r -p "Proceed? [y/N]: " confirm
+  if [[ ${#FILES[@]} -gt 0 ]]; then
+    echo "Files to stage:"
+    for file in "${FILES[@]}"; do
+      echo "  - $file"
+    done
+  fi
+  echo ""
+  read -r -p "Proceed? [y/N]: " selection_input < /dev/tty
   
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+  if [[ ! "$selection_input" =~ ^[Yy]$ ]]; then
     echo "Cancelled."
     exit 0
   fi
@@ -170,8 +223,7 @@ interactive_prompt() {
 prompt_for_pr_body() {
   # Ask user for PR description
   echo ""
-  read -r -p "PR Description (press Enter to skip): " body_input
-  PR_BODY="$body_input"
+  read -r -p "PR Description (press Enter to skip): " PR_BODY < /dev/tty
 }
 
 agent_mode_prompt() {
