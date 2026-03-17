@@ -53,25 +53,36 @@ ok()    { echo "✅ $*"; }
 output_json() {
   local success="$1"
   local message="${2:-}"
-  
-  printf '{"success":%s,"version":"%s","message":"%s"' "$success" "$GHPR_VERSION" "${message//\"/\\\"}"
-  
-  # Add commit info if available
+
+  local json
+  json=$(jq -n \
+    --argjson success "$success" \
+    --arg version "$GHPR_VERSION" \
+    --arg message "$message" \
+    "{success: \$success, version: \$version, message: \$message}")
+
+  # Inject optional fields if set
   if [[ -n "${COMMIT_HASH:-}" ]]; then
-    printf ',"commit":{"hash":"%s","message":"%s"}' "$COMMIT_HASH" "${COMMIT_MSG//\"/\\\"}"
+    json=$(echo "$json" | jq \
+      --arg hash "$COMMIT_HASH" \
+      --arg msg "${COMMIT_MSG:-}" \
+      ". + {commit: {hash: \$hash, message: \$msg}}")
   fi
-  
-  # Add push info if available
+
   if [[ -n "${PUSHED_BRANCH:-}" ]]; then
-    printf ',"push":{"branch":"%s","remote":"origin"}' "$PUSHED_BRANCH"
+    json=$(echo "$json" | jq \
+      --arg branch "$PUSHED_BRANCH" \
+      ". + {push: {branch: \$branch, remote: \"origin\"}}")
   fi
-  
-  # Add PR info if available
+
   if [[ -n "${PR_CREATED:-}" ]]; then
-    printf ',"pr":{"created":true,"head":"%s","base":"%s"}' "$HEAD_BRANCH" "$BASE_BRANCH"
+    json=$(echo "$json" | jq \
+      --arg head "$HEAD_BRANCH" \
+      --arg base "$BASE_BRANCH" \
+      ". + {pr: {created: true, head: \$head, base: \$base}}")
   fi
-  
-  printf '}\n'
+
+  echo "$json"
 }
 
 suppress_output() {
@@ -278,7 +289,8 @@ status_report() {
   # Show health report of the repository
   local uncommitted unpushed branch
   uncommitted=$(git status --short | wc -l)
-  unpushed=$(git log origin/main..HEAD 2>/dev/null | wc -l || echo 0)
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/main")
+  unpushed=$(git log "${upstream}..HEAD" 2>/dev/null | wc -l || echo 0)
   branch=$(git rev-parse --abbrev-ref HEAD)
   
   if [[ "$JSON_OUTPUT" == true ]]; then
@@ -347,26 +359,10 @@ check_for_updates() {
   if [[ "$latest_version" != "$GHPR_VERSION" ]]; then
     if printf '%s\n' "$latest_version" "$GHPR_VERSION" | sort -V | head -1 | grep -q "$GHPR_VERSION" && [[ "$latest_version" != "$GHPR_VERSION" ]]; then
       echo ""
+      echo ""
       echo "📦 A new version of ghpr is available: $latest_version (current: $GHPR_VERSION)"
-      
-      # Try to locate update.sh
-      local update_script
-      if [[ -x "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/update.sh" ]]; then
-        update_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/update.sh"
-      fi
-      
-      if [[ -n "${update_script:-}" ]]; then
-        read -r -p "   Run 'ghpr-update' to upgrade? [y/N] " reply </dev/tty 2>/dev/null || return 0
-        if [[ "$reply" =~ ^[Yy]$ ]]; then
-          echo "→ Running update..."
-          "$update_script"
-          echo ""
-          echo "✅ ghpr updated to $latest_version"
-        fi
-      else
-        echo "   Run: ./update.sh"
-        echo ""
-      fi
+      echo "   Run: ghpr-update to upgrade"
+      echo ""
     fi
   fi
 }
@@ -401,10 +397,6 @@ if [[ -d .git/MERGE_HEAD ]]; then
 elif [[ -d .git/rebase-merge ]] || [[ -d .git/rebase-apply ]]; then
   die "A rebase is in progress. Resolve conflicts and run: git rebase --continue"
 fi
-
-# Check for updates (non-blocking, run in background if possible)
-check_for_updates &
-disown 2>/dev/null || true
 
 # Capture the branch we're on right now — this becomes the BASE default.
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -452,9 +444,9 @@ while [[ $# -gt 0 ]]; do
     --json)
       JSON_OUTPUT=true; shift ;;
     -v|--version)
-      print_version ;;
+      PRINT_VERSION=true; print_version ;;
     -h|--help)
-      usage ;;
+      PRINT_HELP=true; usage ;;
     --preview)
       SHOW_PREVIEW=true; shift ;;
     --suggest)
@@ -475,6 +467,14 @@ while [[ $# -gt 0 ]]; do
       FILES+=("$1"); shift ;;
   esac
 done
+
+[[ "$JSON_OUTPUT" == true ]] && { command -v jq &>/dev/null || die "JSON output requires jq. Install with: brew install jq"; }
+
+# Only check for updates in interactive/normal mode, not for --version/--help/--agent
+if [[ "${PRINT_VERSION:-false}" != true && "${PRINT_HELP:-false}" != true ]]; then
+  check_for_updates &
+  disown 2>/dev/null || true
+fi
 
 if [[ "$SKIP_PR" != true ]]; then
   require_cmd gh
